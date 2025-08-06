@@ -51,39 +51,46 @@
         document.addEventListener('DOMContentLoaded', function() {
             const gameIframe = document.querySelector('.game-iframe');
             const gameWrapper = document.querySelector('.game-wrapper');
+            let isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
             
-            // Create a transparent overlay to capture all touch events
-            const overlay = document.createElement('div');
-            overlay.style.position = 'absolute';
-            overlay.style.top = '0';
-            overlay.style.left = '0';
-            overlay.style.width = '100%';
-            overlay.style.height = '100%';
-            overlay.style.zIndex = '100';
-            overlay.style.display = 'none';
-            gameWrapper.appendChild(overlay);
+            // Function to handle iframe messages
+            function handleMessage(event) {
+                // Prevent any navigation attempts from the iframe
+                if (event.data && typeof event.data === 'string' && 
+                    (event.data.includes('fullscreen') || event.data.includes('click') || event.data.includes('play'))) {
+                    event.preventDefault();
+                    return false;
+                }
+            }
             
-            // Show overlay when iframe is clicked
+            // Add message event listener
+            window.addEventListener('message', handleMessage, false);
+            
+            // Handle iframe load
             gameIframe.addEventListener('load', function() {
                 try {
                     // Try to start the game automatically
-                    gameIframe.contentWindow.postMessage('startGame', '*');
+                    gameIframe.contentWindow.postMessage({ 
+                        type: 'startGame',
+                        preventFullscreen: true
+                    }, '*');
                     
-                    // Listen for touch events on the iframe
-                    gameIframe.contentWindow.addEventListener('touchstart', function(e) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        // Forward the touch event to the iframe
-                        const rect = gameIframe.getBoundingClientRect();
-                        const touch = e.touches[0];
-                        const fakeEvent = new MouseEvent('mousedown', {
-                            clientX: touch.clientX - rect.left,
-                            clientY: touch.clientY - rect.top,
-                            bubbles: true,
-                            cancelable: true
+                    // Add touch event listeners for mobile
+                    if (isMobile) {
+                        // Prevent default touch behavior
+                        gameIframe.contentDocument.addEventListener('touchstart', function(e) {
+                            e.stopPropagation();
+                        }, { passive: false });
+                        
+                        gameIframe.contentDocument.addEventListener('touchend', function(e) {
+                            e.stopPropagation();
+                        }, { passive: false });
+                        
+                        // Prevent zooming
+                        document.addEventListener('gesturestart', function(e) {
+                            e.preventDefault();
                         });
-                        gameIframe.contentDocument.dispatchEvent(fakeEvent);
-                    }, { passive: false });
+                    }
                     
                 } catch (e) {
                     console.log('Error initializing game:', e);
@@ -92,10 +99,25 @@
             
             // Prevent default touch behavior on the document
             document.addEventListener('touchmove', function(e) {
-                if (e.target === gameIframe) {
+                if (e.target === gameIframe || gameIframe.contains(e.target)) {
                     e.preventDefault();
                 }
             }, { passive: false });
+            
+            // Prevent context menu on long press
+            document.addEventListener('contextmenu', function(e) {
+                if (e.target === gameIframe || gameIframe.contains(e.target)) {
+                    e.preventDefault();
+                    return false;
+                }
+            });
+        });
+        
+        // Prevent window from being resized by the iframe
+        window.addEventListener('resize', function() {
+            if (window.innerHeight !== document.documentElement.offsetHeight) {
+                window.scrollTo(0, 0);
+            }
         });
     </script>
     
@@ -155,13 +177,13 @@
         .game-container {
             position: relative;
             width: 100%;
-            max-width: 1024px;
+            max-width: 800px; /* Reduced from 1024px for better mobile experience */
             margin: 0 auto;
             background: var(--container-bg);
             border-radius: 8px;
             overflow: hidden;
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-            aspect-ratio: 16/9;
+            aspect-ratio: 9/16; /* Changed to portrait aspect ratio for mobile */
         }
 
         .game-wrapper {
@@ -228,27 +250,45 @@
 
         @media (max-width: 768px) {
             h1 {
-                font-size: 2rem;
+                font-size: 1.8rem;
+                margin-top: 10px;
             }
             
             .game-container {
-                border-radius: 0;
+                width: 95%;
+                height: 80vh;
+                max-height: 600px;
+                margin: 10px auto;
+                border-radius: 8px;
                 position: relative;
                 overflow: hidden;
                 -webkit-overflow-scrolling: touch;
+                touch-action: manipulation;
+            }
+            
+            .game-iframe {
+                width: 100% !important;
+                height: 100% !important;
+                border: none;
             }
             
             .ad-container {
                 min-height: 50px;
                 padding: 10px;
+                margin: 10px 0;
             }
             
-            /* Prevent body scrolling when touching the game */
             body {
                 overflow-x: hidden;
                 position: relative;
                 width: 100%;
                 height: 100%;
+                touch-action: manipulation;
+            }
+            
+            .game-description {
+                padding: 0 10px;
+                margin-bottom: 10px;
             }
         }
 
@@ -283,15 +323,17 @@
         <main>
             <div class="game-container">
                 <div class="game-wrapper">
-                    <iframe 
-                        src="https://html5.gamedistribution.com/0a8b51e5eaee42e7b4db83ca00afc92e/?gd_sdk_referrer_url=https://www.example.com/games/drift-boss&fullscreen=false&autostart=true&nofullscreen=1&noexit=1" 
-                        class="game-iframe" 
-                        scrolling="no" 
-                        frameborder="0"
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                        sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-top-navigation"
-                        style="-webkit-transform: translateZ(0); transform: translateZ(0);">
-                    </iframe>
+                        <iframe 
+                            src="https://html5.gamedistribution.com/0a8b51e5eaee42e7b4db83ca00afc92e/?gd_sdk_referrer_url=https://www.example.com/games/drift-boss&fullscreen=false&autostart=true&nofullscreen=1&noexit=1&noads=1" 
+                            class="game-iframe" 
+                            scrolling="no" 
+                            frameborder="0"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-top-navigation"
+                            style="-webkit-transform: translateZ(0); transform: translateZ(0); touch-action: manipulation;"
+                            referrerpolicy="no-referrer"
+                            loading="eager">
+                        </iframe>
                     <div class="game-overlay" id="gameOverlay"></div>
                 </div>
             </div>
